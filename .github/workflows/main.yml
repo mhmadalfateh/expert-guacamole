@@ -27,45 +27,47 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept SDK Licenses
+        run: yes | sdkmanager --licenses || true
+
       - name: Find and Extract ZIP
         shell: bash
         run: |
           set -e
-
           mkdir -p extracted
 
           ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
 
-          if [ -n "$ZIP_FILE" ]; then
-            echo "Extracting $ZIP_FILE"
-            unzip -o "$ZIP_FILE" -d extracted
-          else
-            echo "No ZIP found in repository"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP file not found"
             exit 1
           fi
 
-          PROJECT_DIR=$(find extracted -name settings.gradle -printf '%h\n' | head -n 1)
+          unzip -o "$ZIP_FILE" -d extracted
+
+          PROJECT_DIR=$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -printf '%h\n' | head -n 1)
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "Android project not found inside ZIP"
+            echo "ERROR: Android Gradle project not found"
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
-          gradle assembleDebug
+          chmod +x gradlew 2>/dev/null || true
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug
+          else
+            echo "Gradle wrapper not found"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Fateh-Warehouse-APK
-          path: extracted/**/app/build/outputs/apk/debug/app-debug.apk
+          path: extracted/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
